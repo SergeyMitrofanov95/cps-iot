@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<meta cherset = urf8>
+<html>
+    
+    <head>
+        <title>Example with HW button</title>
+    </head>
+    
+    <body>
+        
+        <div id = "divForPrint"></div>
+        
+        <br>
+        
+        <script type="text/javascript" src="/socket.io/socket.io.js"></script>
+        
+        <script type="text/javascript">
+            
+            var divForPrint = document.getElementById("divForPrint");
+            var numberOfLinesInLog = 10; // variable for the number of lines in log div
+            var counterOfLogs = 0;
+
+            function log(msg) { // function to print messages to div with implemented scroll
+                var node=document.createElement("tr"); // we create variable node as tr (table row)
+                var textnode=document.createTextNode(counterOfLogs + " | " + msg); // create elem. with text
+                node.appendChild(textnode); // add to "node", i.e. table row
+                divForPrint.insertBefore(node, divForPrint.childNodes[0]); // insert into variable divForPrint -> document.getElementById("divForPrint");
+                if (counterOfLogs > numberOfLinesInLog-1) { // if there are more numbers as e.g. 10
+                    divForPrint.removeChild(divForPrint.childNodes[numberOfLinesInLog]); // remove the oldest printout
+                }
+                counterOfLogs = counterOfLogs + 1; // increase the counter of logs
+            }
+            
+            var socket = io.connect("172.16.22.61:8080");
+            
+            socket.on("messageToClient", function(msg){
+                log(msg);
+            });
+            
+            socket.on("disconnect", function(){
+                log("Disconnected from the server");
+            });
+            
+        </script>
+    </body>
+</html>
