@@ -1,0 +1,288 @@
+
+<!DOCTYPE html>
+<meta charset=utf-8>
+
+<!-- University of Maribor -->
+<!-- Cybernetics & Decision Support Systems Laboratory -->
+<!-- Faculty of Organizational Sciences -->
+<!-- Andrej Škraba -->
+<!-- 2016 -->
+
+<html>
+<head>
+<title>DC motor simulation, pulse input</title>
+</head>    
+
+<body onload="load();"> <!-- when the page is open function load() is called -->
+    
+<input type="button" value="Start" onClick="start()";>
+<input type="button" value="Stop" onClick="stop()";>
+R=<input type="text" id="R" value="1" >
+<input id="slider" type="range" min="0.50" max="12" step="0.1" value="1" onChange="printOutValue();">
+<br><br>    
+<canvas id="canvas1" width = "800" height = "100" style="border:1px dashed #00c3c3;"> </canvas>    
+<br>
+<canvas id="canvas2" width = "800" height = "100" style="border:1px dashed #00c3c3;"> </canvas>    
+<br>
+
+<div id="printout1"></div>
+<div id="printout2"></div>
+<div id="printout3"></div>
+
+First print (10 lines):
+<div id="print1" style="border:1px dashed gray;"></div>
+    
+<script type="text/javascript">
+"use strict";
+    
+var graf1; // var for object graf
+var graf2; // var for object graf
+var divPrint1;
+    
+var printout1 = document.getElementById('printout1');
+var printout2 = document.getElementById('printout2');
+var printout3 = document.getElementById('printout3');
+    
+var print1 = document.getElementById('print1');
+    
+var dt = 0.015;
+var timeK = 0; // variable that represent discrete time
+var stopTime = 10/dt;
+
+var levelArray = new Array(); // array for Levels
+var rateArray = new Array(); // array for Rates
+var auxiliaryArray = new Array(); // array of Auxiliary variables
+    
+var timerVar; // variable for control of simulation run, i.e. "Timeout" loop
+    
+class Level {
+    
+    constructor(value) {
+       this.value = value; // determine initial value of Level
+       levelArray.push(this); // whole object is pushed to array together with functions updateFn and update
+    }
+    
+    updateFn () {}; // for start, this is empty function as equation; later on, we will put the equation in here
+    
+    update () {  // member function
+	   this.value = this.value + this.updateFn() * dt; // here dt is used - discrete Euler integration
+    }
+    
+}
+    
+class Rate {
+    constructor(value) {
+       this.value = value; // determine the value of the Rate
+       rateArray.push(this); // whole object is pushed to the array, together with function updateFn and update
+    }
+    
+    updateFn () {}; // initially empty function
+    
+    update () {
+	   this.value = this.updateFn(); // here, the update function is different as at "Level", here dt is not considered.
+    }
+}
+    
+class Auxiliary {
+    constructor(value) {
+       this.value = value; // determine inital value of auxiliary element
+       auxiliaryArray.push(this); // whole object is upshed to array, together with functions
+    }
+    
+    updateFn () {}; // empty function for start; here the function will be written later on
+    
+    update () {
+	   this.value = this.updateFn();
+    }
+}
+
+class Graph {
+    constructor(canvasElementId, maxGraphX, minGraphY, maxGraphY) { // at the constructor, the ID of canvas should be specified, which is previoulsy defined in html
+        this.canvas = document.getElementById(canvasElementId); // canvas element is determined
+	    this.ctx = this.canvas.getContext("2d"); // determine context
+        this.ctx.strokeStyle = "#ff0000"; // red color of the graph is determined
+        this.maxGraphX = maxGraphX; // maximum number points, max of x-value
+        this.minGraphY = minGraphY; //  min value on y-axis
+        this.maxGraphY = maxGraphY; // max value on y-axis
+        this.yRange = maxGraphY - minGraphY; // range
+        this.x = new Array(); // vector for x values
+	    this.y = new Array(); // vector for y values
+        this.counter = 0;
+        
+        // Vector x is filled, vector y is filled at simulation execution
+        for (var i=0; i<this.maxGraphX+1; i++) {
+            this.x[i] = i; // for x, the values are 0, 1, 2, ...
+        };
+    }
+    addOneValueOrDropOneValueAddOneValue(yValue){ // membership function; this is equal for all instances of graphs
+        if (this.y.length == this.maxGraphX+1) { // if the vector is filled; ; maxGraphX must be +1, because, on the canvas of size 100x100 we plot 101 points, i.e. start with 0 (0,0) and end with 100 (100,100), i.e. 101 values in each vector
+            this.y.splice(0, 1); // in the position 0 in the array, one value is erased
+            this.y[this.maxGraphX] = yValue; // new value is added at the end
+	   }
+        else {
+            this.y.push(yValue); // if vector is not filled yet, the value is pushed to vector
+        }
+    }
+    draw (yValue) {
+        this.counter = this.counter + 1; // we increase the number of shown points by 1
+        this.addOneValueOrDropOneValueAddOneValue(yValue);
+        this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height); // canvas erase
+        this.ctx.beginPath(); // for the start of the line draw
+        for (var i=0; i<this.y.length; i++) { // loop is executed up to the vector length, at start, the vector length is 1
+            this.ctx.lineTo(this.x[i]/this.maxGraphX*this.canvas.width, (this.canvas.height - ((this.y[i]-this.minGraphY)/this.yRange)*this.canvas.height)); // y coordinate 0 is top left thats why we have -
+        };
+        this.ctx.stroke(); // to draw the line
+    }
+}
+    
+class LogDiv {
+    constructor(divId, numberOfLinesBeforeScroll) {
+        this.divName = document.getElementById(divId); // name of div where values will be printed
+        this.numberOfLinesBeforeScroll = numberOfLinesBeforeScroll; // number of lines which print before scroll
+        this.linesPrintCounter = 0;
+    }
+    log(msg) { // function for printout of the messages with scroll functionality
+        var node=document.createElement("tr"); // we create the variable node as the a table row (table row)
+        var textnode=document.createTextNode(this.linesPrintCounter + " | " + msg); // we create element with the text
+        node.appendChild(textnode); // adding text to "node", t.j. vrstici tabele
+        this.divName.insertBefore(node, this.divName.childNodes[0]); // inserting into variable node
+        if (this.linesPrintCounter > this.numberOfLinesBeforeScroll-1) { // if the lines are more than limit -> start with scroll
+            this.divName.removeChild(this.divName.childNodes[this.numberOfLinesBeforeScroll], this.divName.childNodes[this.numberOfLinesBeforeScroll]); // we remove the oldest printout
+        }
+        this.linesPrintCounter++; // increasing the number of printouts
+    } 
+    
+}
+    
+// **************************************************************
+// Definition of model START ************************************    
+// **************************************************************    
+
+// Order of the variables is important, they should be ordered in the array in such a manner, that
+// the calcullation is possible. At the start, only Levels (states) are initialized and we can determine
+// only those Auxiliaries and Rates, that are dependant on the Levels. The sequence is determined by
+// connection to the Level element.
+var Level1 = new Level(0);
+var Level2 = new Level(0);
+var Rate1 = new Rate();
+var Rate2 = new Rate();
+var Aux1 = new Auxiliary();
+var Aux2 = new Auxiliary();
+var b = 0.1; // damping coefficient [N*m/(rad/s)]
+var KT = 0.1; // torque constant [N*m/A]
+var rho = 150; // gear ratio 150:1
+var IL = 0.0015; // moment of inertia of our Load [kg*m^2]
+var R = 1; // resistance of the motor [ohm]
+var Kb = 0.0055; // back EMF constant [V/(rad/s)]
+var gainPos = 2; // gain when transforming one radian to voltage, i.e. 1 rad = 2V
+var gainDifference = 2.5; // gain that provides +- 5V as the voltage on the DC motor terminal
+
+// step function    
+function stepFunction(height, time) {
+    if(timeK * dt < time) {return 0} else {return height};
+}
+    
+// pulse function
+function pulseFunction(first, period, duration) {
+    if (timeK*dt >= first) {
+        if(first + Math.floor(((timeK*dt)-first)/period) * period <= timeK*dt && timeK*dt <= first + duration + Math.floor(((timeK*dt)-first)/period) * period ) {return 1} else {return 0};
+    }
+    return 0;
+}      
+    
+// Aux ~ definition of Auxiliary elements
+Aux1.updateFn = function () {return (2*pulseFunction(0, 3, 1.5)-1)*2.5}; // stepFunction for input [V]
+Aux2.updateFn = function () {return gainDifference * Aux1.value - Kb * Level1.value};
+
+    
+// Rate
+Rate1.updateFn = function() {return (((KT*rho)/IL)*(1/R))*Aux2.value - b * Level1.value};
+Rate2.updateFn = function() {return (1/rho) * Level1.value};
+
+// Level    
+Level1.updateFn = function() {return Rate1.value};
+Level2.updateFn = function() {return Rate2.value};    
+    
+// **************************************************************
+// END definition of model **************************************    
+// **************************************************************    
+
+// function init should be first, that, at time 0, the values of Rates and Auxes are determined
+function init() {
+
+    for(var i = 0; i < auxiliaryArray.length; i++) {
+		auxiliaryArray[i].update();
+	}
+    
+    for(var i = 0; i < rateArray.length; i++) {
+		rateArray[i].update();
+	}
+    
+    divPrint1.log("init");
+    
+    graf1.draw(levelArray[1].value);
+    graf2.draw(auxiliaryArray[0].value);
+    
+    printout1.innerHTML = "Time=" + (timeK*dt).toFixed(1);
+    
+}        
+
+function loop() {
+
+    timeK = timeK + 1; // prištejemo 1 k času
+    
+    for(var j = 0; j < levelArray.length; j++) {
+		levelArray[j].update();
+	}
+    
+    for(var i = 0; i < auxiliaryArray.length; i++) {
+		auxiliaryArray[i].update();
+	}
+    
+    for(var i = 0; i < rateArray.length; i++) {
+		rateArray[i].update();
+	}
+    
+    graf1.draw(levelArray[1].value);
+    graf2.draw(auxiliaryArray[0].value);
+    
+    divPrint1.log((timeK * dt).toFixed(3) + "|" + (levelArray[0].value).toFixed(5) + " | " + (levelArray[1].value).toFixed(2));
+		
+	timerVar = setTimeout(loop, 0); // na 10ms izvajamo zanko oz. funkcijo "loop"
+    
+    printout1.innerHTML = "Time=" + (timeK*dt).toFixed(1);
+    
+    if (timeK >= stopTime) {clearTimeout (timerVar)};
+}
+    
+function start() {
+    init(); // to determine values for R(0) and A(0); L(0) is defined at start, i.e. initial conditions
+	loop(); // next, the loop is executed
+}
+    
+function stop() {
+    if (timerVar) clearTimeout(timerVar);
+    timerVar = null;
+}
+    
+function printOutValue() {
+    // when we move the slider, the print to the text field is performed and value is written to R
+    document.getElementById("R").value = parseFloat(document.getElementById("slider").value);
+    R = parseFloat(document.getElementById("slider").value);
+}    
+    
+function load() {
+
+    // arguments for graph are: 1. canvas ID, 2. max on x-axis, 3. min on y-axis, 4. max on y-axis
+    graf1 = new Graph("canvas1", 10/dt, 0, 12);
+    graf2 = new Graph("canvas2", 10/dt, -5, 5);
+    
+    divPrint1 = new LogDiv("print1", 700); // as the argument at the creation of the new object we declare the div name into which the printout of the log will be performed and the number of lines before the scroll 
+
+}
+
+</script>
+    
+</body>
+
+</html>
